@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <style>
+        #map {
+            width: 100%;
+            height: 800px;
+        }
+    </style>
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+    <script type="text/javascript">
+        var pois = [];
+        function sendRequest() {
+            $("#loading").css('display','inline');
+            if (pois != null && pois.length > 0) {
+                for (var i in pois) {
+                    var poi = pois[i];
+                    poi.setMap(null);
+                }
+                while(pois.length) {
+                    pois.pop();
+                }
+            }
+            var endpoint = "search.php";
+            $.post(endpoint, $("#dataform").serialize(), requestCallback);
+        }
+
+        function requestCallback(response) {
+            $("#loading").css('display','none');
+            jsonObj = JSON.parse(response);
+            for (var i = 0; i < jsonObj.documents.length; i++) {
+                var doc = jsonObj.documents[i];
+                var poi = new google.maps.Marker({
+                    position: new google.maps.LatLng(doc.lat[0],doc.lon[0]),
+                    map: map,
+                    draggable: false,
+                    title: doc.summary + "\nClick to read more.",
+                    link: doc.reference
+                });
+                if (doc.category[0] == "attraction") {
+                    poi.setIcon('http://maps.google.com/mapfiles/ms/icons/blue-dot.png')
+                } else if (doc.category[0] == "recreation") {
+                    poi.setIcon('http://maps.google.com/mapfiles/ms/icons/green-dot.png')
+                } else if (doc.category[0] == "museum"){
+                    poi.setIcon('http://maps.google.com/mapfiles/ms/icons/red-dot.png')
+                } else {
+                    poi.setIcon('http://maps.google.com/mapfiles/ms/icons/green-dot.png')
+                }
+                google.maps.event.addListener(poi, 'mouseover', function(ev) {
+                    this.getMap().getDiv().setAttribute('title',this.get('title'));
+                });
+                google.maps.event.addListener(poi,'mouseout',function(){
+                    this.getMap().getDiv().removeAttribute('title');
+                });
+                google.maps.event.addListener(poi,'click',function(){
+                    var link = this.get('link');
+                    window.open(link);
+                });
+                pois.push(poi);
+            }
+        }
+        var circle = null;
+        var map = null;
+        var geoCoder = null;
+        function initMap() {
+            var mapDiv = document.getElementById('map');
+            map = new google.maps.Map(mapDiv, {
+                center: {lat: 37.79372806082, lng: -122.451379299},
+                zoom: 12
+            });
+
+            geocoder = new google.maps.Geocoder();
+
+            //Add listener
+            google.maps.event.addListener(map, "click", function (event) {
+                $("#lat").val(event.latLng.lat());
+                $("#lon").val(event.latLng.lng());
+
+                if (circle != null) {
+                    circle.setMap(null);
+                }
+                var rad = $("#rad").val();
+                rad *= 1000;
+
+                circle = new google.maps.Circle({map: map,
+                    radius: rad,
+                    center: event.latLng,
+                    fillColor: '#777',
+                    fillOpacity: 0.1,
+                    strokeColor: '#AA0000',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    draggable: false,
+                    editable: true
+                });
+
+                google.maps.event.addListener(circle,'radius_changed',function(){
+                    var radius = circle.getRadius()/1000;
+                    radius = Number(radius).toFixed(2);
+                    $("#rad").val(radius);
+                    sendRequest();
+                });
+
+                google.maps.event.addListener(circle,'center_changed',function(){
+                    $("#lat").val(this.getCenter().lat());
+                    $("#lon").val(this.getCenter().lng());
+                    sendRequest();
+                });
+
+                // Center of map
+                map.panTo(new google.maps.LatLng($("#lat").val(),$("#lon").val()));
+                sendRequest();
+            }); //end addListener
+        }
+        function newRad(){
+            circle.setRadius($("#rad").val()*1000);
+            sendRequest();
+        }
+
+        function moveCenter() {
+            if (map != null) {
+                geocoder.geocode({'address': $("#place").val()}, function (results, status) {
+                    if (status == google.maps.GeocoderStatus.OK) {
+                        map.setCenter(results[0].geometry.location);
+                    } else {
+                        alert("error");
+                    }
+                });
+            }
+        }
+    </script>
+    <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR-GOOGLEMAPS-APIKEY&callback=initMap">
+    </script>
+</head>
+<body>
+    <h1>Location-based Content Demo</h1>
+    <div>
+        <form id="dataform" method="post">
+            <span>Enter radius (in km)</span>
+            <input id="rad" name="rad" type="number" value="5" onchange="newRad()"/>
+            <span>Select a category</span>
+            <select id="cat" name="cat" onchange="sendRequest()">
+                <option value="attraction">Attraction</option>
+                <option value="recreation">Recreation</option>
+                <option value="museum">Museum</option>
+                <option value="business">Business</option>
+                <option selected value="all">All</option>
+            </select>
+            <input id="lat" name="lat" type="number" hidden />
+            <input id="lon" name="lon" type="number" hidden />&nbsp;
+            <img src="loading.gif" width="80" height="15" id="loading" style="display: none">
+        </form>
+    </div><br/>
+
+    <div>
+        <span>Click on a place to find information about the area.</span>&nbsp;
+        <span>Move to other place by name (e.g. New York)</span>
+        <input id="place" type="text" value="">&nbsp;
+        <input type="button" value="Go" onclick="moveCenter()"/>
+    </div>
+    <div id="map"></div>
+
+</body>
+</html>
